@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"golang.org/x/tools/go/packages"
@@ -16,7 +15,7 @@ func main() {
 	flag.StringVar(&pattern, "pattern", "", "package pattern")
 	flag.Parse()
 
-	cfg := &packages.Config{Mode: packages.NeedSyntax | packages.NeedDeps | packages.NeedTypes}
+	cfg := &packages.Config{Mode: packages.NeedSyntax | packages.NeedName | packages.NeedDeps | packages.NeedTypes}
 	patterns := make([]string, 0, 1)
 	if pattern != "" {
 		patterns = append(patterns, pattern)
@@ -32,6 +31,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	funcs, methods := otwrapper.Parse(pkgs)
-	log.Println(len(funcs), len(methods))
+	otwrapper.Parse(pkgs)
 }
