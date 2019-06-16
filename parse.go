@@ -24,7 +24,9 @@ func Parse(pkgs []*packages.Package) {
 						return true
 					}
 					out.Decls = append(out.Decls, NewFunc(decl, pkg.Name))
-
+				case *ast.TypeSpec:
+					out.Decls = append(out.Decls, NewType(decl, pkg.Name))
+					return true
 				default:
 					return true
 				}
@@ -42,6 +44,29 @@ func Parse(pkgs []*packages.Package) {
 			}
 			fmt.Println("==================")
 		}
+	}
+}
+
+func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
+	return &ast.GenDecl{
+		Tok: token.TYPE,
+		Specs: []ast.Spec{
+			&ast.TypeSpec{
+				Name: decl.Name,
+				Type: &ast.StructType{
+					Fields: &ast.FieldList{
+						List: []*ast.Field{
+							{
+								Type: &ast.SelectorExpr{
+									X:   ast.NewIdent(pkgName),
+									Sel: decl.Name,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
