@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"go/ast"
+	"log"
 	"os"
 
 	"golang.org/x/tools/go/packages"
+
+	"github.com/garsue/otwrapper"
 )
 
 func main() {
@@ -30,24 +32,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Print the names of the source files
-	// for each package listed on the command line.
-	for _, pkg := range pkgs {
-		for _, s := range pkg.Syntax {
-			//log.Println(s)
-			if err := ast.Print(pkg.Fset, s); err != nil {
-				panic(err)
-			}
-		}
-
-		//for _, p := range pkg.GoFiles {
-		//	f, err := parser.ParseFile(pkg.Fset, p, nil, 0)
-		//	if err != nil {
-		//		log.Panic(err)
-		//	}
-		//	if err := ast.Print(pkg.Fset, f); err != nil {
-		//		log.Panic(err)
-		//	}
-		//}
-	}
+	funcs, methods := otwrapper.Parse(pkgs)
+	log.Println(len(funcs), len(methods))
 }
