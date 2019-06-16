@@ -9,9 +9,16 @@ import (
 )
 
 func main() {
+	var pattern string
+	flag.StringVar(&pattern, "pattern", "", "package pattern")
 	flag.Parse()
+
 	cfg := &packages.Config{Mode: packages.NeedFiles | packages.NeedSyntax}
-	pkgs, err := packages.Load(cfg, flag.Args()...)
+	patterns := make([]string, 0, 1)
+	if pattern != "" {
+		patterns = append(patterns, pattern)
+	}
+	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		if _, err := fmt.Fprintf(os.Stderr, "load: %v\n", err); err != nil {
 			os.Exit(1)
