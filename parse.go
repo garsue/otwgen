@@ -85,15 +85,51 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 		}
 	}
 	// Method
+	recv := *fdecl.Recv
+	for i, field := range fdecl.Recv.List {
+		if len(field.Names) == 0 {
+			fdecl.Recv.List[i].Names = append(field.Names, ast.NewIdent("r"))
+			continue
+		}
+		for j := range field.Names {
+			fdecl.Recv.List[i].Names[j] = ast.NewIdent("r")
+		}
+	}
 	return &ast.FuncDecl{
 		Doc:  fdecl.Doc,
-		Recv: fdecl.Recv,
+		Recv: &recv,
 		Name: fdecl.Name,
 		Type: fdecl.Type,
 		Body: &ast.BlockStmt{
 			List: []ast.Stmt{
-				NewFuncBody(fdecl, pkgName),
+				NewMethodBody(fdecl),
 			},
+		},
+	}
+}
+
+func NewMethodBody(fdecl *ast.FuncDecl) ast.Stmt {
+	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
+	for _, field := range fdecl.Type.Params.List {
+		for _, name := range field.Names {
+			args = append(args, name)
+		}
+	}
+	expr := ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent("r"),
+			Sel: fdecl.Name,
+		},
+		Args: args,
+	}
+	if fdecl.Type.Results.NumFields() == 0 {
+		return &ast.ExprStmt{
+			X: &expr,
+		}
+	}
+	return &ast.ReturnStmt{
+		Results: []ast.Expr{
+			&expr,
 		},
 	}
 }
