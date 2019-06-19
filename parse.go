@@ -92,6 +92,37 @@ func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
 }
 
 func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
+	startSpan := ast.AssignStmt{
+		Lhs: []ast.Expr{
+			ast.NewIdent("ctx"),
+			ast.NewIdent("span"),
+		},
+		Tok: token.DEFINE,
+		Rhs: []ast.Expr{
+			&ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ast.NewIdent("trace"),
+					Sel: ast.NewIdent("StartSpan"),
+				},
+				Args: []ast.Expr{
+					ast.NewIdent("ctx"),
+					&ast.BasicLit{
+						Kind:  token.STRING,
+						Value: strconv.Quote("auto generated span"),
+					},
+				},
+			},
+		},
+	}
+	end := ast.DeferStmt{
+		Call: &ast.CallExpr{
+			Fun: &ast.SelectorExpr{
+				X:   ast.NewIdent("span"),
+				Sel: ast.NewIdent("End"),
+			},
+		},
+	}
+
 	// Function
 	if fdecl.Recv == nil {
 		return &ast.FuncDecl{
@@ -100,6 +131,8 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 			Type: fdecl.Type,
 			Body: &ast.BlockStmt{
 				List: []ast.Stmt{
+					&startSpan,
+					&end,
 					NewFuncBody(fdecl, pkgName),
 				},
 			},
@@ -123,6 +156,8 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 		Type: fdecl.Type,
 		Body: &ast.BlockStmt{
 			List: []ast.Stmt{
+				&startSpan,
+				&end,
 				NewMethodBody(fdecl),
 			},
 		},
@@ -192,6 +227,12 @@ func NewFile(pkg *packages.Package) *ast.File {
 						Path: &ast.BasicLit{
 							Kind:  token.STRING,
 							Value: strconv.Quote(pkg.ID),
+						},
+					},
+					&ast.ImportSpec{
+						Path: &ast.BasicLit{
+							Kind:  token.STRING,
+							Value: strconv.Quote("go.opencensus.io/trace"),
 						},
 					},
 				},
