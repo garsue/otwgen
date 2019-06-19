@@ -196,22 +196,40 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 			List: []ast.Stmt{
 				&startSpan,
 				&end,
-				NewMethodBody(fdecl),
+				NewMethodBody(&recv, fdecl),
 			},
 		},
 	}
 }
 
-func NewMethodBody(fdecl *ast.FuncDecl) ast.Stmt {
+func NewMethodBody(recv *ast.FieldList, fdecl *ast.FuncDecl) ast.Stmt {
 	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
 	for _, field := range fdecl.Type.Params.List {
 		for _, name := range field.Names {
 			args = append(args, name)
 		}
 	}
+
+	var recvTypeIdent *ast.Ident
+	for _, field := range recv.List {
+		switch t := field.Type.(type) {
+		case *ast.StarExpr:
+			i, ok := t.X.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			recvTypeIdent = i
+		case *ast.Ident:
+			recvTypeIdent = t
+		}
+	}
+
 	expr := ast.CallExpr{
 		Fun: &ast.SelectorExpr{
-			X:   ast.NewIdent("r"),
+			X: &ast.SelectorExpr{
+				X:   ast.NewIdent("r"),
+				Sel: recvTypeIdent,
+			},
 			Sel: fdecl.Name,
 		},
 		Args: args,
