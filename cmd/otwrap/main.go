@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"go/token"
+	"log"
 	"os"
 
 	"golang.org/x/tools/go/packages"
@@ -35,9 +37,24 @@ func main() {
 	}
 
 	for file := range otwrapper.Parse(context.Background(), pkgs) {
-		if err := format.Node(os.Stdout, token.NewFileSet(), file); err != nil {
-			panic(err)
+		name, err := Write(file)
+		if err != nil {
+			log.Fatal(err)
 		}
-		fmt.Println("==================")
+		log.Println(name)
 	}
+}
+
+func Write(file *ast.File) (name string, err error) {
+	out, err := os.Create(file.Name.Name + ".go")
+	if err != nil {
+		return "", err
+	}
+
+	defer func() {
+		if err1 := out.Close(); err1 != nil && err == nil {
+			err = err1
+		}
+	}()
+	return out.Name(), format.Node(out, token.NewFileSet(), file)
 }
