@@ -70,6 +70,25 @@ func canTrace(decl *ast.FuncDecl) bool {
 	if !decl.Name.IsExported() {
 		return false
 	}
+	if decl.Recv != nil {
+		for _, field := range decl.Recv.List {
+			// Ignore not exported receiver's method
+			switch t := field.Type.(type) {
+			case *ast.StarExpr:
+				i, ok := t.X.(*ast.Ident)
+				if !ok {
+					continue
+				}
+				if !i.IsExported() {
+					return false
+				}
+			case *ast.Ident:
+				if !t.IsExported() {
+					return false
+				}
+			}
+		}
+	}
 	for _, field := range decl.Type.Params.List {
 		t, ok := field.Type.(*ast.SelectorExpr)
 		if !ok {
