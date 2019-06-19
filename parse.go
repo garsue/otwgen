@@ -1,53 +1,69 @@
 package otwrapper
 
 import (
-	"fmt"
+	"context"
 	"go/ast"
-	"go/format"
 	"go/token"
-	"os"
+	"runtime"
 	"strconv"
+	"sync"
 
 	"golang.org/x/tools/go/packages"
 )
 
-func Parse(pkgs []*packages.Package) {
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Syntax {
-			out := NewFile(pkg)
-
-			var found bool
-			ast.Inspect(file, func(n ast.Node) bool {
-				switch decl := n.(type) {
-				case *ast.FuncDecl:
-					if !canTrace(decl) {
-						return true
-					}
-					out.Decls = append(out.Decls, NewFunc(decl, pkg.Name))
-				case *ast.TypeSpec:
-					if !decl.Name.IsExported() {
-						return true
-					}
-					out.Decls = append(out.Decls, NewType(decl, pkg.Name))
-					return true
-				default:
-					return true
-				}
-				found = true
-
-				return true
-			})
-
-			if !found {
-				continue
+func Parse(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
+	pkgCh := make(chan *packages.Package)
+	go func() {
+		defer close(pkgCh)
+		for _, pkg := range pkgs {
+			p := pkg
+			select {
+			case <-ctx.Done():
+				return
+			case pkgCh <- p:
 			}
-
-			if err := format.Node(os.Stdout, token.NewFileSet(), out); err != nil {
-				panic(err)
-			}
-			fmt.Println("==================")
 		}
+	}()
+
+	files := make(chan *ast.File)
+	var wg sync.WaitGroup
+	for i := 0; i < runtime.NumCPU(); i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case pkg, ok := <-pkgCh:
+					if !ok {
+						return
+					}
+
+					file := NewFile(pkg)
+					for _, input := range pkg.Syntax {
+						decls, found := Generate(pkg.Name, input)
+						if !found {
+							continue
+						}
+						file.Decls = append(file.Decls, decls...)
+					}
+					if len(file.Decls) > 0 {
+						select {
+						case <-ctx.Done():
+							return
+						case files <- file:
+						}
+					}
+				}
+			}
+		}()
 	}
+	go func() {
+		wg.Wait()
+		close(files)
+	}()
+	return files
 }
 
 func canTrace(decl *ast.FuncDecl) bool {
@@ -217,6 +233,27 @@ func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
 			&expr,
 		},
 	}
+}
+
+func Generate(pkgName string, input *ast.File) (decls []ast.Decl, found bool) {
+	ast.Inspect(input, func(n ast.Node) bool {
+		switch decl := n.(type) {
+		case *ast.FuncDecl:
+			if canTrace(decl) {
+				decls = append(decls, NewFunc(decl, pkgName))
+				found = true
+			}
+			return true
+		case *ast.TypeSpec:
+			if decl.Name.IsExported() {
+				decls = append(decls, NewType(decl, pkgName))
+			}
+			return true
+		default:
+			return true
+		}
+	})
+	return decls, found
 }
 
 func NewFile(pkg *packages.Package) *ast.File {

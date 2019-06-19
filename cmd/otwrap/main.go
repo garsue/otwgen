@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"go/format"
+	"go/token"
 	"os"
 
 	"golang.org/x/tools/go/packages"
@@ -31,5 +34,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	otwrapper.Parse(pkgs)
+	for file := range otwrapper.Parse(context.Background(), pkgs) {
+		if err := format.Node(os.Stdout, token.NewFileSet(), file); err != nil {
+			panic(err)
+		}
+		fmt.Println("==================")
+	}
 }
