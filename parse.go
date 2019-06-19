@@ -20,7 +20,7 @@ func Parse(pkgs []*packages.Package) {
 			ast.Inspect(file, func(n ast.Node) bool {
 				switch decl := n.(type) {
 				case *ast.FuncDecl:
-					if !decl.Name.IsExported() {
+					if !canTrace(decl) {
 						return true
 					}
 					out.Decls = append(out.Decls, NewFunc(decl, pkg.Name))
@@ -45,6 +45,27 @@ func Parse(pkgs []*packages.Package) {
 			fmt.Println("==================")
 		}
 	}
+}
+
+func canTrace(decl *ast.FuncDecl) bool {
+	if !decl.Name.IsExported() {
+		return false
+	}
+	for _, field := range decl.Type.Params.List {
+		t, ok := field.Type.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		x, ok := t.X.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		// Found context.Context in arguments
+		if x.Name == "context" && t.Sel.Name == "Context" {
+			return true
+		}
+	}
+	return false
 }
 
 func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
