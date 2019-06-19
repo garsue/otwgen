@@ -25,6 +25,9 @@ func Parse(pkgs []*packages.Package) {
 					}
 					out.Decls = append(out.Decls, NewFunc(decl, pkg.Name))
 				case *ast.TypeSpec:
+					if !decl.Name.IsExported() {
+						return true
+					}
 					out.Decls = append(out.Decls, NewType(decl, pkg.Name))
 					return true
 				default:
