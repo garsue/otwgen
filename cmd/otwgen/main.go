@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 
-	"github.com/garsue/otwrapper"
+	"github.com/garsue/otwgen"
 )
 
 func main() {
@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	for file := range otwrapper.Parse(context.Background(), pkgs) {
+	for file := range otwgen.Parse(context.Background(), pkgs) {
 		name, err := Write(file)
 		if err != nil {
 			log.Fatal(err)

@@ -1,4 +1,4 @@
-package otwrapper
+package otwgen
 
 import (
 	"context"

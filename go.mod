@@ -1,4 +1,4 @@
-module github.com/garsue/otwrapper
+module github.com/garsue/otwgen
 
 go 1.12
 
