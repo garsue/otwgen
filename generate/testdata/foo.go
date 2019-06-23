@@ -7,20 +7,37 @@ import (
 	"os"
 )
 
-func Foo(ctx context.Context) {
-	request, err := http.NewRequest(http.MethodGet, "http://localhost", nil)
-	if err != nil {
+//noinspection GoUnusedExportedFunction
+func MustFoo(ctx context.Context) {
+	if err := Foo(ctx); err != nil {
 		panic(err)
 	}
-	request = request.WithContext(ctx)
+}
+
+func Foo(ctx context.Context) (err error) {
+	request, err := newRequest(ctx)
+	if err != nil {
+		return err
+	}
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
-		panic(err)
+		return err
 	}
+	defer func() {
+		if err1 := response.Body.Close(); err1 != nil && err == nil {
+			err = err1
+		}
+	}()
 	if _, err := io.Copy(os.Stdout, response.Body); err != nil {
-		panic(err)
+		return err
 	}
-	if err := response.Body.Close(); err != nil {
-		return
+	return nil
+}
+
+func newRequest(ctx context.Context) (*http.Request, error) {
+	request, err := http.NewRequest(http.MethodGet, "http://localhost", nil)
+	if err != nil {
+		return nil, err
 	}
+	return request.WithContext(ctx), err
 }

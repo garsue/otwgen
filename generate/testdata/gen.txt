@@ -1,0 +1,32 @@
+package testdata
+
+import (
+	"github.com/garsue/otwgen/generate/testdata"
+	"go.opencensus.io/trace"
+)
+
+type Bar struct {
+	testdata.Bar
+}
+
+func (r Bar) MustMethod(ctx context.Context) {
+	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	defer span.End()
+	r.Bar.MustMethod(ctx)
+}
+func (r Bar) Method(ctx context.Context) error {
+	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	defer span.End()
+	return r.Bar.Method(ctx)
+}
+
+func MustFoo(ctx context.Context) { //noinspection GoUnusedExportedFunction
+	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	defer span.End()
+	testdata.MustFoo(ctx)
+}
+func Foo(ctx context.Context) (err error) {
+	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	defer span.End()
+	return testdata.Foo(ctx)
+}
