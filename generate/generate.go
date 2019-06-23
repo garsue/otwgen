@@ -22,19 +22,7 @@ func LoadPackages(patterns []string) ([]*packages.Package, error) {
 
 // nolint:gocyclo
 func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
-	pkgCh := make(chan *packages.Package)
-	go func() {
-		defer close(pkgCh)
-		for _, pkg := range pkgs {
-			p := pkg
-			select {
-			case <-ctx.Done():
-				return
-			case pkgCh <- p:
-			}
-		}
-	}()
-
+	pkgCh := pkgChannel(ctx, pkgs)
 	files := make(chan *ast.File)
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -51,14 +39,16 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 					}
 
 					file := NewFile(pkg)
+					var found bool
 					for _, input := range pkg.Syntax {
-						decls, found := buildFuncs(pkg.Name, input)
+						var decls []ast.Decl
+						decls, found = buildFuncs(pkg.Name, input)
 						if !found {
 							continue
 						}
 						file.Decls = append(file.Decls, decls...)
 					}
-					if len(file.Decls) > 0 {
+					if found {
 						select {
 						case <-ctx.Done():
 							return
@@ -74,6 +64,22 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 		close(files)
 	}()
 	return files
+}
+
+func pkgChannel(ctx context.Context, pkgs []*packages.Package) <-chan *packages.Package {
+	pkgCh := make(chan *packages.Package)
+	go func() {
+		defer close(pkgCh)
+		for _, pkg := range pkgs {
+			p := pkg
+			select {
+			case <-ctx.Done():
+				return
+			case pkgCh <- p:
+			}
+		}
+	}()
+	return pkgCh
 }
 
 // nolint:gocyclo
