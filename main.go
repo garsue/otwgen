@@ -55,15 +55,8 @@ func start(patterns []string, dir string) error {
 		return fmt.Errorf("%d package errors found", cnt)
 	}
 
-	if err1 := os.MkdirAll(dir, 0755); err1 != nil && !os.IsExist(err1) {
-		return err1
-	}
-	info, err := os.Stat(dir)
-	if err != nil {
+	if err := SetupDir(dir); err != nil {
 		return err
-	}
-	if !info.IsDir() {
-		return fmt.Errorf("%s is not a directory", dir)
 	}
 
 	for file := range generate.Generate(context.Background(), pkgs) {
@@ -72,6 +65,20 @@ func start(patterns []string, dir string) error {
 			return err
 		}
 		log.Println(name)
+	}
+	return nil
+}
+
+func SetupDir(dir string) error {
+	if err := os.MkdirAll(dir, 0755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
 	}
 	return nil
 }
