@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/format"
@@ -11,15 +11,23 @@ import (
 	"os"
 
 	"golang.org/x/tools/go/packages"
+	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/garsue/otwgen"
 )
 
 func main() {
-	var pattern string
-	flag.StringVar(&pattern, "pattern", "", "package pattern")
-	flag.Parse()
+	app := cli.NewApp()
+	app.Action = func(ctx *cli.Context) error {
+		return start(ctx.String("pattern"))
+	}
 
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+func start(pattern string) error {
 	cfg := &packages.Config{Mode: packages.NeedSyntax | packages.NeedName | packages.NeedDeps | packages.NeedTypes}
 	patterns := make([]string, 0, 1)
 	if pattern != "" {
@@ -28,21 +36,22 @@ func main() {
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		if _, err1 := fmt.Fprintf(os.Stderr, "load: %v\n", err); err1 != nil {
-			os.Exit(1)
+			return err1
 		}
-		os.Exit(1)
+		return err
 	}
 	if packages.PrintErrors(pkgs) > 0 {
-		os.Exit(1)
+		return errors.New("some errors found")
 	}
 
 	for file := range otwgen.Parse(context.Background(), pkgs) {
 		name, err := Write(file)
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		log.Println(name)
 	}
+	return nil
 }
 
 func Write(file *ast.File) (name string, err error) {
