@@ -5,6 +5,17 @@ jobs:
       - image: circleci/golang:1.12
     steps:
       - checkout
+      - run: |
+          curl -sL https://git.io/goreleaser > goreleaser.sh;
+          chmod +x goreleaser.sh;
+          ./goreleaser.sh --snapshot --skip-publish;
+      - store_artifacts:
+          path: dist
+  test:
+    docker:
+      - image: circleci/golang:1.12
+    steps:
+      - checkout
       - run: go test -race -v ./...
   release:
     docker:
@@ -18,11 +29,10 @@ workflows:
   build:
     jobs:
       - build
-  release:
-    jobs:
+      - test
       - release:
-        filters:
-          branches:
-            ignore: /.*/
-          tags:
-            only: /v[0-9]+(\.[0-9]+)*(-.*)*/
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /v[0-9]+(\.[0-9]+)*(-.*)*/

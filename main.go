@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"log"
 	"os"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 	cli "gopkg.in/urfave/cli.v1"
@@ -16,8 +17,19 @@ import (
 	"github.com/garsue/otwgen/generate"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	app := cli.NewApp()
+	if version == "dev" {
+		app.Version = strings.Join([]string{version, date, commit}, "-")
+	} else {
+		app.Version = version
+	}
 	app.Commands = []cli.Command{
 		{
 			Name:        "generate",
