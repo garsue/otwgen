@@ -111,39 +111,64 @@ func NewFile(pkg *packages.Package) (*ast.File, bool) {
 
 func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 	ast.Inspect(input, func(n ast.Node) bool {
-		var wrapped ast.Decl
+		var wrapped []ast.Decl
 		switch decl := n.(type) {
 		case *ast.TypeSpec:
-			if decl.Name.IsExported() {
-				wrapped = newType(decl, pkgName)
+			if t, c, ok := newType(decl, pkgName); ok {
+				wrapped = append(wrapped, t, c)
 			}
 		case *ast.FuncDecl:
 			if f, ok := newFunc(decl, pkgName); ok {
-				wrapped = f
+				wrapped = append(wrapped, f)
 				found = true
 			}
 		default:
 			return true
 		}
-		if wrapped != nil {
-			decls = append(decls, wrapped)
+		if len(wrapped) > 0 {
+			decls = append(decls, wrapped...)
 		}
 		return true
 	})
 	return decls, found
 }
 
-func newType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
+func newType(decl *ast.TypeSpec, pkgName string) (wrapped *ast.GenDecl, constructor *ast.FuncDecl, ok bool) {
+	if !decl.Name.IsExported() {
+		return nil, constructor, false
+	}
 	return &ast.GenDecl{
-		Tok: token.TYPE,
-		Specs: []ast.Spec{
-			&ast.TypeSpec{
-				Name: decl.Name,
-				Type: &ast.StructType{
-					Fields: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Type: &ast.SelectorExpr{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: decl.Name,
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: &ast.StarExpr{
+										X: &ast.SelectorExpr{
+											X:   ast.NewIdent(pkgName),
+											Sel: decl.Name,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}, &ast.FuncDecl{
+			Name: ast.NewIdent("New" + decl.Name.Name),
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Names: []*ast.Ident{
+								ast.NewIdent("orig"),
+							},
+							Type: &ast.StarExpr{
+								X: &ast.SelectorExpr{
 									X:   ast.NewIdent(pkgName),
 									Sel: decl.Name,
 								},
@@ -151,9 +176,34 @@ func newType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
 						},
 					},
 				},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: &ast.StarExpr{
+								X: decl.Name,
+							},
+						},
+					},
+				},
 			},
-		},
-	}
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.UnaryExpr{
+								Op: token.AND,
+								X: &ast.CompositeLit{
+									Type: decl.Name,
+									Elts: []ast.Expr{
+										ast.NewIdent("orig"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}, true
 }
 
 func newFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok bool) {
