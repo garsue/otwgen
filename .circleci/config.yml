@@ -11,6 +11,14 @@ jobs:
           ./goreleaser.sh --snapshot --skip-publish;
       - store_artifacts:
           path: dist
+  lint:
+    docker:
+      - image: circleci/golang:1.12
+    steps:
+      - checkout
+      - run: |
+          curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.17.1;
+          bin/golangci-lint run;
   test:
     docker:
       - image: circleci/golang:1.12
@@ -29,8 +37,13 @@ workflows:
   build:
     jobs:
       - build
+      - lint
       - test
       - release:
+          requires:
+            - build
+            - lint
+            - test
           filters:
             branches:
               ignore: /.*/
