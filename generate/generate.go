@@ -1,4 +1,4 @@
-package otwgen
+package generate
 
 import (
 	"context"

@@ -13,7 +13,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	cli "gopkg.in/urfave/cli.v1"
 
-	"github.com/garsue/otwgen"
+	"github.com/garsue/otwgen/generate"
 )
 
 func main() {
@@ -51,7 +51,7 @@ func start(pattern string) error {
 		return errors.New("some errors found")
 	}
 
-	for file := range otwgen.Parse(context.Background(), pkgs) {
+	for file := range generate.Parse(context.Background(), pkgs) {
 		name, err := Write(file)
 		if err != nil {
 			return err
