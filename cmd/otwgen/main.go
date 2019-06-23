@@ -27,7 +27,7 @@ func main() {
 	}
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
-		if _, err := fmt.Fprintf(os.Stderr, "load: %v\n", err); err != nil {
+		if _, err1 := fmt.Fprintf(os.Stderr, "load: %v\n", err); err1 != nil {
 			os.Exit(1)
 		}
 		os.Exit(1)
