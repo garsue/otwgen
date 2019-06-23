@@ -73,47 +73,6 @@ func pkgChannel(ctx context.Context, pkgs []*packages.Package) <-chan *packages.
 	return pkgCh
 }
 
-// nolint:gocyclo
-func canTrace(decl *ast.FuncDecl) bool {
-	if !decl.Name.IsExported() {
-		return false
-	}
-	if decl.Recv != nil {
-		for _, field := range decl.Recv.List {
-			// Ignore not exported receiver's method
-			switch t := field.Type.(type) {
-			case *ast.StarExpr:
-				i, ok := t.X.(*ast.Ident)
-				if !ok {
-					continue
-				}
-				if !i.IsExported() {
-					return false
-				}
-			case *ast.Ident:
-				if !t.IsExported() {
-					return false
-				}
-			}
-		}
-	}
-	for _, field := range decl.Type.Params.List {
-		t, ok := field.Type.(*ast.SelectorExpr)
-		if !ok {
-			continue
-		}
-		x, ok := t.X.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		// Found context.Context in arguments
-		if x.Name == "context" && t.Sel.Name == "Context" {
-			return true
-		}
-	}
-	return false
-}
-
 func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
 	return &ast.GenDecl{
 		Tok: token.TYPE,
@@ -137,54 +96,69 @@ func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
 	}
 }
 
-func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
-	startSpan := ast.AssignStmt{
-		Lhs: []ast.Expr{
-			ast.NewIdent("ctx"),
-			ast.NewIdent("span"),
-		},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.CallExpr{
-				Fun: &ast.SelectorExpr{
-					X:   ast.NewIdent("trace"),
-					Sel: ast.NewIdent("StartSpan"),
-				},
-				Args: []ast.Expr{
-					ast.NewIdent("ctx"),
-					&ast.BasicLit{
-						Kind:  token.STRING,
-						Value: strconv.Quote("auto generated span"),
+func NewFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok bool) {
+	if !fdecl.Name.IsExported() {
+		return nil, false
+	}
+
+	var body ast.Stmt
+	if fdecl.Recv != nil { // Method
+		wrapped, ok = NewMethodDecl(fdecl)
+		body = NewMethodBody(fdecl)
+	} else { // Function
+		wrapped, ok = NewFuncDecl(fdecl)
+		body = NewFuncBody(fdecl, pkgName)
+	}
+
+	if !ok {
+		return nil, false
+	}
+	wrapped.Body = &ast.BlockStmt{
+		List: append(SpanStmts(), body),
+	}
+	return wrapped, true
+}
+
+func SpanStmts() []ast.Stmt {
+	return []ast.Stmt{
+		&ast.AssignStmt{
+			Lhs: []ast.Expr{
+				ast.NewIdent("ctx"),
+				ast.NewIdent("span"),
+			},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X:   ast.NewIdent("trace"),
+						Sel: ast.NewIdent("StartSpan"),
+					},
+					Args: []ast.Expr{
+						ast.NewIdent("ctx"),
+						&ast.BasicLit{
+							Kind:  token.STRING,
+							Value: strconv.Quote("auto generated span"),
+						},
 					},
 				},
 			},
 		},
-	}
-	end := ast.DeferStmt{
-		Call: &ast.CallExpr{
-			Fun: &ast.SelectorExpr{
-				X:   ast.NewIdent("span"),
-				Sel: ast.NewIdent("End"),
+		&ast.DeferStmt{
+			Call: &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ast.NewIdent("span"),
+					Sel: ast.NewIdent("End"),
+				},
 			},
 		},
 	}
+}
 
-	// Function
-	if fdecl.Recv == nil {
-		return &ast.FuncDecl{
-			Doc:  fdecl.Doc,
-			Name: fdecl.Name,
-			Type: fdecl.Type,
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&startSpan,
-					&end,
-					NewFuncBody(fdecl, pkgName),
-				},
-			},
-		}
+func NewMethodDecl(fdecl *ast.FuncDecl) (wrapped *ast.FuncDecl, ok bool) {
+	if !isExportedRecv(fdecl) || !hasCtx(fdecl) {
+		return nil, false
 	}
-	// Method
+
 	recv := *fdecl.Recv
 	for i, field := range fdecl.Recv.List {
 		if len(field.Names) == 0 {
@@ -200,17 +174,31 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 		Recv: &recv,
 		Name: fdecl.Name,
 		Type: fdecl.Type,
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&startSpan,
-				&end,
-				NewMethodBody(&recv, fdecl),
-			},
-		},
-	}
+	}, true
 }
 
-func NewMethodBody(recv *ast.FieldList, fdecl *ast.FuncDecl) ast.Stmt {
+func isExportedRecv(decl *ast.FuncDecl) bool {
+	for _, field := range decl.Recv.List {
+		// Ignore not exported receiver's method
+		switch t := field.Type.(type) {
+		case *ast.StarExpr:
+			i, ok := t.X.(*ast.Ident)
+			if !ok {
+				continue
+			}
+			if !i.IsExported() {
+				return false
+			}
+		case *ast.Ident:
+			if !t.IsExported() {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func NewMethodBody(fdecl *ast.FuncDecl) ast.Stmt {
 	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
 	for _, field := range fdecl.Type.Params.List {
 		for _, name := range field.Names {
@@ -219,7 +207,7 @@ func NewMethodBody(recv *ast.FieldList, fdecl *ast.FuncDecl) ast.Stmt {
 	}
 
 	var recvTypeIdent *ast.Ident
-	for _, field := range recv.List {
+	for _, field := range fdecl.Recv.List {
 		switch t := field.Type.(type) {
 		case *ast.StarExpr:
 			i, ok := t.X.(*ast.Ident)
@@ -254,6 +242,17 @@ func NewMethodBody(recv *ast.FieldList, fdecl *ast.FuncDecl) ast.Stmt {
 	}
 }
 
+func NewFuncDecl(decl *ast.FuncDecl) (wrapped *ast.FuncDecl, ok bool) {
+	if !hasCtx(decl) {
+		return nil, false
+	}
+	return &ast.FuncDecl{
+		Doc:  decl.Doc,
+		Name: decl.Name,
+		Type: decl.Type,
+	}, true
+}
+
 func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
 	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
 	for _, field := range fdecl.Type.Params.List {
@@ -280,23 +279,44 @@ func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
 	}
 }
 
+func hasCtx(decl *ast.FuncDecl) bool {
+	for _, field := range decl.Type.Params.List {
+		t, ok := field.Type.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		x, ok := t.X.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		// Found context.Context in arguments
+		if x.Name == "context" && t.Sel.Name == "Context" {
+			return true
+		}
+	}
+	return false
+}
+
 func buildFuncs(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 	ast.Inspect(input, func(n ast.Node) bool {
+		var wrapped ast.Decl
 		switch decl := n.(type) {
 		case *ast.FuncDecl:
-			if canTrace(decl) {
-				decls = append(decls, NewFunc(decl, pkgName))
+			if f, ok := NewFunc(decl, pkgName); ok {
+				wrapped = f
 				found = true
 			}
-			return true
 		case *ast.TypeSpec:
 			if decl.Name.IsExported() {
-				decls = append(decls, NewType(decl, pkgName))
+				wrapped = NewType(decl, pkgName)
 			}
-			return true
 		default:
 			return true
 		}
+		if wrapped != nil {
+			decls = append(decls, wrapped)
+		}
+		return true
 	})
 	return decls, found
 }

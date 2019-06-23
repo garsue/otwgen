@@ -9,12 +9,12 @@ type Bar struct {
 	testdata.Bar
 }
 
-func (r Bar) MustMethod(ctx context.Context) {
+func (r *Bar) MustMethod(ctx context.Context) {
 	ctx, span := trace.StartSpan(ctx, "auto generated span")
 	defer span.End()
 	r.Bar.MustMethod(ctx)
 }
-func (r Bar) Method(ctx context.Context) error {
+func (r *Bar) Method(ctx context.Context) error {
 	ctx, span := trace.StartSpan(ctx, "auto generated span")
 	defer span.End()
 	return r.Bar.Method(ctx)
