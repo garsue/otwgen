@@ -28,10 +28,12 @@ func Foo(ctx context.Context) (err error) {
 			err = err1
 		}
 	}()
-	if _, err := io.Copy(os.Stdout, response.Body); err != nil {
-		return err
-	}
-	return nil
+	return Show(response.Body)
+}
+
+func Show(body io.Reader) error {
+	_, err := io.Copy(os.Stdout, body)
+	return err
 }
 
 func newRequest(ctx context.Context) (*http.Request, error) {

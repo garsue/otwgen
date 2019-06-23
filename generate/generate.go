@@ -73,234 +73,6 @@ func pkgChannel(ctx context.Context, pkgs []*packages.Package) <-chan *packages.
 	return pkgCh
 }
 
-// nolint:gocyclo
-func canTrace(decl *ast.FuncDecl) bool {
-	if !decl.Name.IsExported() {
-		return false
-	}
-	if decl.Recv != nil {
-		for _, field := range decl.Recv.List {
-			// Ignore not exported receiver's method
-			switch t := field.Type.(type) {
-			case *ast.StarExpr:
-				i, ok := t.X.(*ast.Ident)
-				if !ok {
-					continue
-				}
-				if !i.IsExported() {
-					return false
-				}
-			case *ast.Ident:
-				if !t.IsExported() {
-					return false
-				}
-			}
-		}
-	}
-	for _, field := range decl.Type.Params.List {
-		t, ok := field.Type.(*ast.SelectorExpr)
-		if !ok {
-			continue
-		}
-		x, ok := t.X.(*ast.Ident)
-		if !ok {
-			continue
-		}
-		// Found context.Context in arguments
-		if x.Name == "context" && t.Sel.Name == "Context" {
-			return true
-		}
-	}
-	return false
-}
-
-func NewType(decl *ast.TypeSpec, pkgName string) *ast.GenDecl {
-	return &ast.GenDecl{
-		Tok: token.TYPE,
-		Specs: []ast.Spec{
-			&ast.TypeSpec{
-				Name: decl.Name,
-				Type: &ast.StructType{
-					Fields: &ast.FieldList{
-						List: []*ast.Field{
-							{
-								Type: &ast.SelectorExpr{
-									X:   ast.NewIdent(pkgName),
-									Sel: decl.Name,
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
-	startSpan := ast.AssignStmt{
-		Lhs: []ast.Expr{
-			ast.NewIdent("ctx"),
-			ast.NewIdent("span"),
-		},
-		Tok: token.DEFINE,
-		Rhs: []ast.Expr{
-			&ast.CallExpr{
-				Fun: &ast.SelectorExpr{
-					X:   ast.NewIdent("trace"),
-					Sel: ast.NewIdent("StartSpan"),
-				},
-				Args: []ast.Expr{
-					ast.NewIdent("ctx"),
-					&ast.BasicLit{
-						Kind:  token.STRING,
-						Value: strconv.Quote("auto generated span"),
-					},
-				},
-			},
-		},
-	}
-	end := ast.DeferStmt{
-		Call: &ast.CallExpr{
-			Fun: &ast.SelectorExpr{
-				X:   ast.NewIdent("span"),
-				Sel: ast.NewIdent("End"),
-			},
-		},
-	}
-
-	// Function
-	if fdecl.Recv == nil {
-		return &ast.FuncDecl{
-			Doc:  fdecl.Doc,
-			Name: fdecl.Name,
-			Type: fdecl.Type,
-			Body: &ast.BlockStmt{
-				List: []ast.Stmt{
-					&startSpan,
-					&end,
-					NewFuncBody(fdecl, pkgName),
-				},
-			},
-		}
-	}
-	// Method
-	recv := *fdecl.Recv
-	for i, field := range fdecl.Recv.List {
-		if len(field.Names) == 0 {
-			fdecl.Recv.List[i].Names = append(fdecl.Recv.List[i].Names, ast.NewIdent("r"))
-			continue
-		}
-		for j := range field.Names {
-			fdecl.Recv.List[i].Names[j] = ast.NewIdent("r")
-		}
-	}
-	return &ast.FuncDecl{
-		Doc:  fdecl.Doc,
-		Recv: &recv,
-		Name: fdecl.Name,
-		Type: fdecl.Type,
-		Body: &ast.BlockStmt{
-			List: []ast.Stmt{
-				&startSpan,
-				&end,
-				NewMethodBody(&recv, fdecl),
-			},
-		},
-	}
-}
-
-func NewMethodBody(recv *ast.FieldList, fdecl *ast.FuncDecl) ast.Stmt {
-	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
-	for _, field := range fdecl.Type.Params.List {
-		for _, name := range field.Names {
-			args = append(args, name)
-		}
-	}
-
-	var recvTypeIdent *ast.Ident
-	for _, field := range recv.List {
-		switch t := field.Type.(type) {
-		case *ast.StarExpr:
-			i, ok := t.X.(*ast.Ident)
-			if !ok {
-				continue
-			}
-			recvTypeIdent = i
-		case *ast.Ident:
-			recvTypeIdent = t
-		}
-	}
-
-	expr := ast.CallExpr{
-		Fun: &ast.SelectorExpr{
-			X: &ast.SelectorExpr{
-				X:   ast.NewIdent("r"),
-				Sel: recvTypeIdent,
-			},
-			Sel: fdecl.Name,
-		},
-		Args: args,
-	}
-	if fdecl.Type.Results.NumFields() == 0 {
-		return &ast.ExprStmt{
-			X: &expr,
-		}
-	}
-	return &ast.ReturnStmt{
-		Results: []ast.Expr{
-			&expr,
-		},
-	}
-}
-
-func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
-	args := make([]ast.Expr, 0, fdecl.Type.Params.NumFields())
-	for _, field := range fdecl.Type.Params.List {
-		for _, name := range field.Names {
-			args = append(args, name)
-		}
-	}
-	expr := ast.CallExpr{
-		Fun: &ast.SelectorExpr{
-			X:   ast.NewIdent(pkgName),
-			Sel: fdecl.Name,
-		},
-		Args: args,
-	}
-	if fdecl.Type.Results.NumFields() == 0 {
-		return &ast.ExprStmt{
-			X: &expr,
-		}
-	}
-	return &ast.ReturnStmt{
-		Results: []ast.Expr{
-			&expr,
-		},
-	}
-}
-
-func buildFuncs(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
-	ast.Inspect(input, func(n ast.Node) bool {
-		switch decl := n.(type) {
-		case *ast.FuncDecl:
-			if canTrace(decl) {
-				decls = append(decls, NewFunc(decl, pkgName))
-				found = true
-			}
-			return true
-		case *ast.TypeSpec:
-			if decl.Name.IsExported() {
-				decls = append(decls, NewType(decl, pkgName))
-			}
-			return true
-		default:
-			return true
-		}
-	})
-	return decls, found
-}
-
 func NewFile(pkg *packages.Package) (*ast.File, bool) {
 	file := ast.File{
 		Name: ast.NewIdent(pkg.Name),
@@ -327,7 +99,7 @@ func NewFile(pkg *packages.Package) (*ast.File, bool) {
 	var found bool
 	for _, input := range pkg.Syntax {
 		var decls []ast.Decl
-		decls, ok := buildFuncs(pkg.Name, input)
+		decls, ok := buildDecls(pkg.Name, input)
 		if !ok {
 			continue
 		}
@@ -335,4 +107,159 @@ func NewFile(pkg *packages.Package) (*ast.File, bool) {
 		file.Decls = append(file.Decls, decls...)
 	}
 	return &file, found
+}
+
+func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
+	ast.Inspect(input, func(n ast.Node) bool {
+		var wrapped []ast.Decl
+		switch decl := n.(type) {
+		case *ast.TypeSpec:
+			if t, c, ok := newType(decl, pkgName); ok {
+				wrapped = append(wrapped, t, c)
+			}
+		case *ast.FuncDecl:
+			if f, ok := newFunc(decl, pkgName); ok {
+				wrapped = append(wrapped, f)
+				found = true
+			}
+		default:
+			return true
+		}
+		if len(wrapped) > 0 {
+			decls = append(decls, wrapped...)
+		}
+		return true
+	})
+	return decls, found
+}
+
+func newType(decl *ast.TypeSpec, pkgName string) (wrapped *ast.GenDecl, constructor *ast.FuncDecl, ok bool) {
+	if !decl.Name.IsExported() {
+		return nil, constructor, false
+	}
+	return &ast.GenDecl{
+			Tok: token.TYPE,
+			Specs: []ast.Spec{
+				&ast.TypeSpec{
+					Name: decl.Name,
+					Type: &ast.StructType{
+						Fields: &ast.FieldList{
+							List: []*ast.Field{
+								{
+									Type: &ast.StarExpr{
+										X: &ast.SelectorExpr{
+											X:   ast.NewIdent(pkgName),
+											Sel: decl.Name,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}, &ast.FuncDecl{
+			Name: ast.NewIdent("New" + decl.Name.Name),
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Names: []*ast.Ident{
+								ast.NewIdent("orig"),
+							},
+							Type: &ast.StarExpr{
+								X: &ast.SelectorExpr{
+									X:   ast.NewIdent(pkgName),
+									Sel: decl.Name,
+								},
+							},
+						},
+					},
+				},
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						{
+							Type: &ast.StarExpr{
+								X: decl.Name,
+							},
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ReturnStmt{
+						Results: []ast.Expr{
+							&ast.UnaryExpr{
+								Op: token.AND,
+								X: &ast.CompositeLit{
+									Type: decl.Name,
+									Elts: []ast.Expr{
+										ast.NewIdent("orig"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}, true
+}
+
+func newFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok bool) {
+	if !fdecl.Name.IsExported() {
+		return nil, false
+	}
+
+	var body ast.Stmt
+	if fdecl.Recv != nil { // Method
+		wrapped, ok = NewMethodDecl(fdecl)
+		body = NewMethodBody(fdecl)
+	} else { // Function
+		wrapped, ok = NewFuncDecl(fdecl)
+		body = NewFuncBody(fdecl, pkgName)
+	}
+
+	if !ok {
+		return nil, false
+	}
+	wrapped.Body = &ast.BlockStmt{
+		List: append(spanStmts(), body),
+	}
+	return wrapped, true
+}
+
+func spanStmts() []ast.Stmt {
+	return []ast.Stmt{
+		&ast.AssignStmt{
+			Lhs: []ast.Expr{
+				ast.NewIdent("ctx"),
+				ast.NewIdent("span"),
+			},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{
+				&ast.CallExpr{
+					Fun: &ast.SelectorExpr{
+						X:   ast.NewIdent("trace"),
+						Sel: ast.NewIdent("StartSpan"),
+					},
+					Args: []ast.Expr{
+						ast.NewIdent("ctx"),
+						&ast.BasicLit{
+							Kind:  token.STRING,
+							Value: strconv.Quote("auto generated span"),
+						},
+					},
+				},
+			},
+		},
+		&ast.DeferStmt{
+			Call: &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ast.NewIdent("span"),
+					Sel: ast.NewIdent("End"),
+				},
+			},
+		},
+	}
 }
