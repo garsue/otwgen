@@ -11,6 +11,15 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+func LoadPackages(patterns []string) ([]*packages.Package, error) {
+	return packages.Load(&packages.Config{
+		Mode: packages.NeedSyntax |
+			packages.NeedName |
+			packages.NeedDeps |
+			packages.NeedTypes,
+	}, patterns...)
+}
+
 // nolint:gocyclo
 func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	pkgCh := make(chan *packages.Package)

@@ -2,15 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"go/ast"
 	"go/format"
 	"go/token"
 	"log"
 	"os"
 
-	"golang.org/x/tools/go/packages"
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/garsue/otwgen/generate"
@@ -29,7 +26,7 @@ func main() {
 			ShortName:   "g",
 			Description: "generate wrapper functions",
 			Action: func(ctx *cli.Context) error {
-				return start(ctx.Args().First())
+				return start(ctx.Args())
 			},
 		},
 	}
@@ -39,21 +36,10 @@ func main() {
 		log.Fatal(err)
 	}
 }
-func start(pattern string) error {
-	cfg := &packages.Config{Mode: packages.NeedSyntax | packages.NeedName | packages.NeedDeps | packages.NeedTypes}
-	patterns := make([]string, 0, 1)
-	if pattern != "" {
-		patterns = append(patterns, pattern)
-	}
-	pkgs, err := packages.Load(cfg, patterns...)
+func start(patterns []string) error {
+	pkgs, err := generate.LoadPackages(patterns)
 	if err != nil {
-		if _, err1 := fmt.Fprintf(os.Stderr, "load: %v\n", err); err1 != nil {
-			return err1
-		}
 		return err
-	}
-	if packages.PrintErrors(pkgs) > 0 {
-		return errors.New("some errors found")
 	}
 
 	for file := range generate.Generate(context.Background(), pkgs) {
