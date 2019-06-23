@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/format"
 	"go/token"
 	"log"
 	"os"
+	"path/filepath"
 
 	cli "gopkg.in/urfave/cli.v1"
 
@@ -25,8 +27,15 @@ func main() {
 			Name:        "generate",
 			ShortName:   "g",
 			Description: "generate wrapper functions",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "dir, d",
+					Usage: "output directory",
+					Value: ".",
+				},
+			},
 			Action: func(ctx *cli.Context) error {
-				return start(ctx.Args())
+				return start(ctx.Args(), ctx.String("dir"))
 			},
 		},
 	}
@@ -36,14 +45,25 @@ func main() {
 		log.Fatal(err)
 	}
 }
-func start(patterns []string) error {
+func start(patterns []string, dir string) error {
 	pkgs, err := generate.LoadPackages(patterns)
 	if err != nil {
 		return err
 	}
 
+	if err1 := os.MkdirAll(dir, 0755); err1 != nil && !os.IsExist(err1) {
+		return err1
+	}
+	info, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+
 	for file := range generate.Generate(context.Background(), pkgs) {
-		name, err := Write(file)
+		name, err := Write(dir, file)
 		if err != nil {
 			return err
 		}
@@ -52,8 +72,8 @@ func start(patterns []string) error {
 	return nil
 }
 
-func Write(file *ast.File) (name string, err error) {
-	out, err := os.Create(file.Name.Name + ".go")
+func Write(dir string, file *ast.File) (name string, err error) {
+	out, err := os.Create(filepath.Join(dir, file.Name.Name) + ".go")
 	if err != nil {
 		return "", err
 	}
