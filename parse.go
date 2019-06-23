@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// nolint:gocyclo
 func Parse(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	pkgCh := make(chan *packages.Package)
 	go func() {
@@ -66,6 +67,7 @@ func Parse(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	return files
 }
 
+// nolint:gocyclo
 func canTrace(decl *ast.FuncDecl) bool {
 	if !decl.Name.IsExported() {
 		return false
@@ -180,7 +182,7 @@ func NewFunc(fdecl *ast.FuncDecl, pkgName string) *ast.FuncDecl {
 	recv := *fdecl.Recv
 	for i, field := range fdecl.Recv.List {
 		if len(field.Names) == 0 {
-			fdecl.Recv.List[i].Names = append(field.Names, ast.NewIdent("r"))
+			fdecl.Recv.List[i].Names = append(fdecl.Recv.List[i].Names, ast.NewIdent("r"))
 			continue
 		}
 		for j := range field.Names {
@@ -272,7 +274,7 @@ func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
 	}
 }
 
-func Generate(pkgName string, input *ast.File) (decls []ast.Decl, found bool) {
+func Generate(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 	ast.Inspect(input, func(n ast.Node) bool {
 		switch decl := n.(type) {
 		case *ast.FuncDecl:
