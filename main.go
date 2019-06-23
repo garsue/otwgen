@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/tools/go/packages"
 	cli "gopkg.in/urfave/cli.v1"
 
 	"github.com/garsue/otwgen/generate"
@@ -49,6 +50,9 @@ func start(patterns []string, dir string) error {
 	pkgs, err := generate.LoadPackages(patterns)
 	if err != nil {
 		return err
+	}
+	if cnt := packages.PrintErrors(pkgs); cnt > 0 {
+		return fmt.Errorf("%d package errors found", cnt)
 	}
 
 	if err1 := os.MkdirAll(dir, 0755); err1 != nil && !os.IsExist(err1) {

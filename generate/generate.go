@@ -20,7 +20,6 @@ func LoadPackages(patterns []string) ([]*packages.Package, error) {
 	}, patterns...)
 }
 
-// nolint:gocyclo
 func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	pkgCh := pkgChannel(ctx, pkgs)
 	files := make(chan *ast.File)
@@ -38,22 +37,14 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 						return
 					}
 
-					file := NewFile(pkg)
-					var found bool
-					for _, input := range pkg.Syntax {
-						var decls []ast.Decl
-						decls, found = buildFuncs(pkg.Name, input)
-						if !found {
-							continue
-						}
-						file.Decls = append(file.Decls, decls...)
+					file, found := NewFile(pkg)
+					if !found {
+						continue
 					}
-					if found {
-						select {
-						case <-ctx.Done():
-							return
-						case files <- file:
-						}
+					select {
+					case <-ctx.Done():
+						return
+					case files <- file:
 					}
 				}
 			}
@@ -310,8 +301,8 @@ func buildFuncs(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 	return decls, found
 }
 
-func NewFile(pkg *packages.Package) *ast.File {
-	return &ast.File{
+func NewFile(pkg *packages.Package) (*ast.File, bool) {
+	file := ast.File{
 		Name: ast.NewIdent(pkg.Name),
 		Decls: []ast.Decl{
 			&ast.GenDecl{
@@ -333,4 +324,15 @@ func NewFile(pkg *packages.Package) *ast.File {
 			},
 		},
 	}
+	var found bool
+	for _, input := range pkg.Syntax {
+		var decls []ast.Decl
+		decls, ok := buildFuncs(pkg.Name, input)
+		if !ok {
+			continue
+		}
+		found = true
+		file.Decls = append(file.Decls, decls...)
+	}
+	return &file, found
 }
