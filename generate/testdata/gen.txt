@@ -20,7 +20,7 @@ func (r Bar) Method(ctx context.Context) error {
 	return r.Bar.Method(ctx)
 }
 
-func MustFoo(ctx context.Context) { //noinspection GoUnusedExportedFunction
+func MustFoo(ctx context.Context) { // noinspection GoUnusedExportedFunction
 	ctx, span := trace.StartSpan(ctx, "auto generated span")
 	defer span.End()
 	testdata.MustFoo(ctx)

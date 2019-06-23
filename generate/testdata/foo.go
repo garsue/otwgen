@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-//noinspection GoUnusedExportedFunction
+// noinspection GoUnusedExportedFunction
 func MustFoo(ctx context.Context) {
 	if err := Foo(ctx); err != nil {
 		panic(err)
