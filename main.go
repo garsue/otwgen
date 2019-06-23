@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"log"
 	"os"
-	"strings"
 
 	"golang.org/x/tools/go/packages"
 	cli "gopkg.in/urfave/cli.v1"
@@ -19,17 +18,11 @@ import (
 
 var (
 	version = "dev"
-	commit  = "none"
-	date    = "unknown"
 )
 
 func main() {
 	app := cli.NewApp()
-	if version == "dev" {
-		app.Version = strings.Join([]string{version, date, commit}, "-")
-	} else {
-		app.Version = version
-	}
+	app.Version = version
 	app.Commands = []cli.Command{
 		{
 			Name:        "generate",
@@ -63,7 +56,7 @@ func start(pattern string) error {
 		return errors.New("some errors found")
 	}
 
-	for file := range generate.Parse(context.Background(), pkgs) {
+	for file := range generate.Generate(context.Background(), pkgs) {
 		name, err := Write(file)
 		if err != nil {
 			return err

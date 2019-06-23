@@ -12,7 +12,7 @@ import (
 )
 
 // nolint:gocyclo
-func Parse(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
+func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	pkgCh := make(chan *packages.Package)
 	go func() {
 		defer close(pkgCh)
@@ -43,7 +43,7 @@ func Parse(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 
 					file := NewFile(pkg)
 					for _, input := range pkg.Syntax {
-						decls, found := Generate(pkg.Name, input)
+						decls, found := buildFuncs(pkg.Name, input)
 						if !found {
 							continue
 						}
@@ -274,7 +274,7 @@ func NewFuncBody(fdecl *ast.FuncDecl, pkgName string) ast.Stmt {
 	}
 }
 
-func Generate(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
+func buildFuncs(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 	ast.Inspect(input, func(n ast.Node) bool {
 		switch decl := n.(type) {
 		case *ast.FuncDecl:
