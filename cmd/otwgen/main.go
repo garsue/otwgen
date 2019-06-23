@@ -18,8 +18,15 @@ import (
 
 func main() {
 	app := cli.NewApp()
-	app.Action = func(ctx *cli.Context) error {
-		return start(ctx.String("pattern"))
+	app.Commands = []cli.Command{
+		{
+			Name:        "generate",
+			ShortName:   "g",
+			Description: "generate wrapper functions",
+			Action: func(ctx *cli.Context) error {
+				return start(ctx.Args().First())
+			},
+		},
 	}
 
 	err := app.Run(os.Args)
