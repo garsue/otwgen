@@ -5,7 +5,9 @@ import (
 	"go/ast"
 	"go/token"
 	"runtime"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/packages"
@@ -14,6 +16,8 @@ import (
 func LoadPackages(patterns []string) ([]*packages.Package, error) {
 	return packages.Load(&packages.Config{
 		Mode: packages.NeedName |
+			packages.NeedImports |
+			packages.NeedDeps |
 			packages.NeedSyntax |
 			packages.NeedTypes,
 	}, patterns...)
@@ -84,15 +88,14 @@ func syntaxChannel(ctx context.Context, pkgs []*packages.Package) <-chan SyntaxT
 
 func NewFile(syntax SyntaxTree) (*ast.File, bool) {
 	var decls []ast.Decl
-	var found bool
-	ds, ok := buildDecls(syntax.pkg.Name, syntax.file)
+	specs, ds, ok := compose(syntax.pkg, syntax.file)
 	if !ok {
 		return nil, false
 	}
-	found = true
 	decls = append(decls, ds...)
 
-	imports := []ast.Spec{
+	specs = append(
+		specs,
 		&ast.ImportSpec{
 			Path: &ast.BasicLit{
 				Kind:  token.STRING,
@@ -105,31 +108,43 @@ func NewFile(syntax SyntaxTree) (*ast.File, bool) {
 				Value: strconv.Quote("go.opencensus.io/trace"),
 			},
 		},
-	}
+	)
+	sort.Slice(specs, func(i, j int) bool {
+		return specs[i].(*ast.ImportSpec).Path.Value < specs[j].(*ast.ImportSpec).Path.Value
+	})
 
 	return &ast.File{
 		Name: ast.NewIdent(syntax.pkg.Name),
 		Decls: append([]ast.Decl{
 			&ast.GenDecl{
 				Tok:   token.IMPORT,
-				Specs: imports,
+				Specs: specs,
 			},
 		}, decls...),
-	}, found
+	}, true
 }
 
-func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
+func compose(pkg *packages.Package, input *ast.File) (specs []ast.Spec, decls []ast.Decl, found bool) {
+	origImports := importNameMap(input, pkg)
+	requiredSelectors := make(map[string]struct{}, len(input.Imports))
 	ast.Inspect(input, func(n ast.Node) bool {
 		var wrapped []ast.Decl
 		switch decl := n.(type) {
 		case *ast.TypeSpec:
-			if t, c, ok := newType(decl, pkgName); ok {
+			if t, c, ok := newType(decl, pkg.Name); ok {
 				wrapped = append(wrapped, t, c)
 			}
 		case *ast.FuncDecl:
-			if f, ok := newFunc(decl, pkgName); ok {
+			if f, ok := newFunc(decl, pkg.Name); ok {
 				wrapped = append(wrapped, f)
 				found = true
+				for _, field := range f.Type.Params.List {
+					name, ok := findSelectorName(field.Type)
+					if !ok {
+						continue
+					}
+					requiredSelectors[name] = struct{}{}
+				}
 			}
 		default:
 			return true
@@ -139,7 +154,48 @@ func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
 		}
 		return true
 	})
-	return decls, found
+
+	for name := range requiredSelectors {
+		specs = append(specs, origImports[name])
+	}
+
+	return specs, decls, found
+}
+
+func importNameMap(input *ast.File, pkg *packages.Package) map[string]*ast.ImportSpec {
+	origImports := make(map[string]*ast.ImportSpec, len(input.Imports))
+	for _, v := range input.Imports {
+		if v.Name != nil {
+			origImports[v.Name.Name] = v
+		} else {
+			ip := pkg.Imports[strings.Trim(v.Path.Value, `"`)]
+			origImports[ip.Name] = v
+		}
+	}
+	return origImports
+}
+
+func findSelectorName(fieldType ast.Expr) (name string, found bool) {
+	switch t := fieldType.(type) {
+	case *ast.StarExpr:
+		se, ok := t.X.(*ast.SelectorExpr)
+		if !ok {
+			return "", false
+		}
+		i, ok := se.X.(*ast.Ident)
+		if !ok {
+			return "", false
+		}
+		return i.Name, true
+	case *ast.SelectorExpr:
+		i, ok := t.X.(*ast.Ident)
+		if !ok {
+			return "", false
+		}
+		return i.Name, true
+	default:
+		return "", false
+	}
 }
 
 func newType(decl *ast.TypeSpec, pkgName string) (wrapped *ast.GenDecl, constructor *ast.FuncDecl, ok bool) {

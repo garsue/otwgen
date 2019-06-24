@@ -1,6 +1,7 @@
 package testdata
 
 import (
+	"context"
 	"github.com/garsue/otwgen/generate/testdata"
 	"go.opencensus.io/trace"
 )

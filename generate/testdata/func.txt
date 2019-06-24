@@ -1,8 +1,11 @@
 package testdata
 
 import (
+	"context"
 	"github.com/garsue/otwgen/generate/testdata"
 	"go.opencensus.io/trace"
+	aliasedIO "io"
+	"net/http"
 )
 
 func MustFoo(ctx context.Context) { // noinspection GoUnusedExportedFunction

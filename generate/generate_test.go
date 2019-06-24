@@ -48,6 +48,8 @@ func TestLoadPackages(t *testing.T) {
 func TestNewFile(t *testing.T) {
 	pkgs, err := packages.Load(&packages.Config{
 		Mode: packages.NeedName |
+			packages.NeedImports |
+			packages.NeedDeps |
 			packages.NeedSyntax |
 			packages.NeedTypes,
 	}, "github.com/garsue/otwgen/generate/testdata")
