@@ -5,24 +5,6 @@ import (
 	"go.opencensus.io/trace"
 )
 
-type Bar struct {
-	*testdata.Bar
-}
-
-func NewBar(orig *testdata.Bar) *Bar {
-	return &Bar{orig}
-}
-func (r *Bar) MustMethod(ctx context.Context) {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
-	defer span.End()
-	r.Bar.MustMethod(ctx)
-}
-func (r *Bar) Method(ctx context.Context) error {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
-	defer span.End()
-	return r.Bar.Method(ctx)
-}
-
 func MustFoo(ctx context.Context) { // noinspection GoUnusedExportedFunction
 	ctx, span := trace.StartSpan(ctx, "auto generated span")
 	defer span.End()
