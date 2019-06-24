@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"go/ast"
 	"go/format"
 	"go/token"
 	"log"
@@ -60,8 +59,8 @@ func start(patterns []string, dir string) error {
 		return err
 	}
 
-	for file := range generate.Generate(context.Background(), pkgs) {
-		name, err := Write(dir, file)
+	for result := range generate.Generate(context.Background(), pkgs) {
+		name, err := Write(dir, result)
 		if err != nil {
 			return err
 		}
@@ -84,8 +83,8 @@ func SetupDir(dir string) error {
 	return nil
 }
 
-func Write(dir string, file *ast.File) (name string, err error) {
-	out, err := os.Create(filepath.Join(dir, file.Name.Name) + ".go")
+func Write(dir string, wrapper generate.Wrapper) (name string, err error) {
+	out, err := os.Create(filepath.Join(dir, wrapper.Name))
 	if err != nil {
 		return "", err
 	}
@@ -95,5 +94,5 @@ func Write(dir string, file *ast.File) (name string, err error) {
 			err = err1
 		}
 	}()
-	return out.Name(), format.Node(out, token.NewFileSet(), file)
+	return out.Name(), format.Node(out, token.NewFileSet(), wrapper.File)
 }
