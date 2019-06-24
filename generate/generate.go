@@ -4,6 +4,7 @@ import (
 	"context"
 	"go/ast"
 	"go/token"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -18,14 +19,20 @@ func LoadPackages(patterns []string) ([]*packages.Package, error) {
 		Mode: packages.NeedName |
 			packages.NeedImports |
 			packages.NeedDeps |
+			packages.NeedFiles |
 			packages.NeedSyntax |
 			packages.NeedTypes,
 	}, patterns...)
 }
 
-func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
+type Wrapper struct {
+	Name string
+	File *ast.File
+}
+
+func Generate(ctx context.Context, pkgs []*packages.Package) <-chan Wrapper {
 	syntaxCh := syntaxChannel(ctx, pkgs)
-	files := make(chan *ast.File)
+	files := make(chan Wrapper)
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.NumCPU(); i++ {
 		wg.Add(1)
@@ -47,7 +54,10 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 					select {
 					case <-ctx.Done():
 						return
-					case files <- file:
+					case files <- Wrapper{
+						Name: syntax.name,
+						File: file,
+					}:
 					}
 				}
 			}
@@ -61,6 +71,7 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 }
 
 type SyntaxTree struct {
+	name string
 	pkg  *packages.Package
 	file *ast.File
 }
@@ -70,12 +81,13 @@ func syntaxChannel(ctx context.Context, pkgs []*packages.Package) <-chan SyntaxT
 	go func() {
 		defer close(syntaxCh)
 		for _, pkg := range pkgs {
-			for _, syntax := range pkg.Syntax {
+			for i, syntax := range pkg.Syntax {
 				p, s := pkg, syntax
 				select {
 				case <-ctx.Done():
 					return
 				case syntaxCh <- SyntaxTree{
+					name: filepath.Base(p.GoFiles[i]),
 					pkg:  p,
 					file: s,
 				}:
