@@ -13,15 +13,14 @@ import (
 
 func LoadPackages(patterns []string) ([]*packages.Package, error) {
 	return packages.Load(&packages.Config{
-		Mode: packages.NeedSyntax |
-			packages.NeedName |
-			packages.NeedDeps |
+		Mode: packages.NeedName |
+			packages.NeedSyntax |
 			packages.NeedTypes,
 	}, patterns...)
 }
 
 func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
-	pkgCh := pkgChannel(ctx, pkgs)
+	syntaxCh := syntaxChannel(ctx, pkgs)
 	files := make(chan *ast.File)
 	var wg sync.WaitGroup
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -32,12 +31,12 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 				select {
 				case <-ctx.Done():
 					return
-				case pkg, ok := <-pkgCh:
+				case syntax, ok := <-syntaxCh:
 					if !ok {
 						return
 					}
 
-					file, found := NewFile(pkg)
+					file, found := NewFile(syntax)
 					if !found {
 						continue
 					}
@@ -57,56 +56,66 @@ func Generate(ctx context.Context, pkgs []*packages.Package) <-chan *ast.File {
 	return files
 }
 
-func pkgChannel(ctx context.Context, pkgs []*packages.Package) <-chan *packages.Package {
-	pkgCh := make(chan *packages.Package)
+type SyntaxTree struct {
+	pkg  *packages.Package
+	file *ast.File
+}
+
+func syntaxChannel(ctx context.Context, pkgs []*packages.Package) <-chan SyntaxTree {
+	syntaxCh := make(chan SyntaxTree)
 	go func() {
-		defer close(pkgCh)
+		defer close(syntaxCh)
 		for _, pkg := range pkgs {
-			p := pkg
-			select {
-			case <-ctx.Done():
-				return
-			case pkgCh <- p:
+			for _, syntax := range pkg.Syntax {
+				p, s := pkg, syntax
+				select {
+				case <-ctx.Done():
+					return
+				case syntaxCh <- SyntaxTree{
+					pkg:  p,
+					file: s,
+				}:
+				}
 			}
 		}
 	}()
-	return pkgCh
+	return syntaxCh
 }
 
-func NewFile(pkg *packages.Package) (*ast.File, bool) {
-	file := ast.File{
-		Name: ast.NewIdent(pkg.Name),
-		Decls: []ast.Decl{
-			&ast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []ast.Spec{
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: strconv.Quote(pkg.ID),
-						},
-					},
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: strconv.Quote("go.opencensus.io/trace"),
-						},
-					},
-				},
+func NewFile(syntax SyntaxTree) (*ast.File, bool) {
+	var decls []ast.Decl
+	var found bool
+	ds, ok := buildDecls(syntax.pkg.Name, syntax.file)
+	if !ok {
+		return nil, false
+	}
+	found = true
+	decls = append(decls, ds...)
+
+	imports := []ast.Spec{
+		&ast.ImportSpec{
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: strconv.Quote(syntax.pkg.ID),
+			},
+		},
+		&ast.ImportSpec{
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: strconv.Quote("go.opencensus.io/trace"),
 			},
 		},
 	}
-	var found bool
-	for _, input := range pkg.Syntax {
-		var decls []ast.Decl
-		decls, ok := buildDecls(pkg.Name, input)
-		if !ok {
-			continue
-		}
-		found = true
-		file.Decls = append(file.Decls, decls...)
-	}
-	return &file, found
+
+	return &ast.File{
+		Name: ast.NewIdent(syntax.pkg.Name),
+		Decls: append([]ast.Decl{
+			&ast.GenDecl{
+				Tok:   token.IMPORT,
+				Specs: imports,
+			},
+		}, decls...),
+	}, found
 }
 
 func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
@@ -211,22 +220,23 @@ func newFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok boo
 		return nil, false
 	}
 
+	var w *ast.FuncDecl
 	var body ast.Stmt
 	if fdecl.Recv != nil { // Method
-		wrapped, ok = NewMethodDecl(fdecl)
+		w, ok = NewMethodDecl(fdecl)
 		body = NewMethodBody(fdecl)
 	} else { // Function
-		wrapped, ok = NewFuncDecl(fdecl)
+		w, ok = NewFuncDecl(fdecl)
 		body = NewFuncBody(fdecl, pkgName)
 	}
-
 	if !ok {
 		return nil, false
 	}
-	wrapped.Body = &ast.BlockStmt{
+
+	w.Body = &ast.BlockStmt{
 		List: append(spanStmts(), body),
 	}
-	return wrapped, true
+	return w, true
 }
 
 func spanStmts() []ast.Stmt {

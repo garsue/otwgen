@@ -13,7 +13,7 @@ type bar struct {
 }
 
 func (b *bar) Method(ctx context.Context) error {
-	return Foo(ctx)
+	return Foo(ctx, nil)
 }
 
 func (b *Bar) MustMethod(ctx context.Context) {
