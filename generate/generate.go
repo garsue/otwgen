@@ -13,9 +13,8 @@ import (
 
 func LoadPackages(patterns []string) ([]*packages.Package, error) {
 	return packages.Load(&packages.Config{
-		Mode: packages.NeedSyntax |
-			packages.NeedName |
-			packages.NeedDeps |
+		Mode: packages.NeedName |
+			packages.NeedSyntax |
 			packages.NeedTypes,
 	}, patterns...)
 }
@@ -74,39 +73,41 @@ func pkgChannel(ctx context.Context, pkgs []*packages.Package) <-chan *packages.
 }
 
 func NewFile(pkg *packages.Package) (*ast.File, bool) {
-	file := ast.File{
-		Name: ast.NewIdent(pkg.Name),
-		Decls: []ast.Decl{
-			&ast.GenDecl{
-				Tok: token.IMPORT,
-				Specs: []ast.Spec{
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: strconv.Quote(pkg.ID),
-						},
-					},
-					&ast.ImportSpec{
-						Path: &ast.BasicLit{
-							Kind:  token.STRING,
-							Value: strconv.Quote("go.opencensus.io/trace"),
-						},
-					},
-				},
-			},
-		},
-	}
+	var decls []ast.Decl
 	var found bool
 	for _, input := range pkg.Syntax {
-		var decls []ast.Decl
-		decls, ok := buildDecls(pkg.Name, input)
+		ds, ok := buildDecls(pkg.Name, input)
 		if !ok {
 			continue
 		}
 		found = true
-		file.Decls = append(file.Decls, decls...)
+		decls = append(decls, ds...)
 	}
-	return &file, found
+
+	imports := []ast.Spec{
+		&ast.ImportSpec{
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: strconv.Quote(pkg.ID),
+			},
+		},
+		&ast.ImportSpec{
+			Path: &ast.BasicLit{
+				Kind:  token.STRING,
+				Value: strconv.Quote("go.opencensus.io/trace"),
+			},
+		},
+	}
+
+	return &ast.File{
+		Name: ast.NewIdent(pkg.Name),
+		Decls: append([]ast.Decl{
+			&ast.GenDecl{
+				Tok:   token.IMPORT,
+				Specs: imports,
+			},
+		}, decls...),
+	}, found
 }
 
 func buildDecls(pkgName string, input ast.Node) (decls []ast.Decl, found bool) {
@@ -211,22 +212,23 @@ func newFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok boo
 		return nil, false
 	}
 
+	var w *ast.FuncDecl
 	var body ast.Stmt
 	if fdecl.Recv != nil { // Method
-		wrapped, ok = NewMethodDecl(fdecl)
+		w, ok = NewMethodDecl(fdecl)
 		body = NewMethodBody(fdecl)
 	} else { // Function
-		wrapped, ok = NewFuncDecl(fdecl)
+		w, ok = NewFuncDecl(fdecl)
 		body = NewFuncBody(fdecl, pkgName)
 	}
-
 	if !ok {
 		return nil, false
 	}
-	wrapped.Body = &ast.BlockStmt{
+
+	w.Body = &ast.BlockStmt{
 		List: append(spanStmts(), body),
 	}
-	return wrapped, true
+	return w, true
 }
 
 func spanStmts() []ast.Stmt {
