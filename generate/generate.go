@@ -150,7 +150,7 @@ func compose(pkg *packages.Package, input *ast.File) (specs []ast.Spec, decls []
 			if f, ok := newFunc(decl, pkg.Name); ok {
 				wrapped = append(wrapped, f)
 				found = true
-				for _, field := range f.Type.Params.List {
+				for _, field := range params(f) {
 					name, ok := findSelectorName(field.Type)
 					if !ok {
 						continue
@@ -172,6 +172,14 @@ func compose(pkg *packages.Package, input *ast.File) (specs []ast.Spec, decls []
 	}
 
 	return specs, decls, found
+}
+
+func params(decl *ast.FuncDecl) []*ast.Field {
+	params := decl.Type.Params.List
+	if decl.Type.Results != nil {
+		params = append(params, decl.Type.Results.List...)
+	}
+	return params
 }
 
 func importNameMap(input *ast.File, pkg *packages.Package) map[string]*ast.ImportSpec {
