@@ -310,12 +310,12 @@ func newFunc(fdecl *ast.FuncDecl, pkgName string) (wrapped *ast.FuncDecl, ok boo
 	}
 
 	w.Body = &ast.BlockStmt{
-		List: append(spanStmts(), body),
+		List: append(spanStmts(pkgName, w.Name.Name), body),
 	}
 	return w, true
 }
 
-func spanStmts() []ast.Stmt {
+func spanStmts(pkgName, funcName string) []ast.Stmt {
 	return []ast.Stmt{
 		&ast.AssignStmt{
 			Lhs: []ast.Expr{
@@ -333,7 +333,7 @@ func spanStmts() []ast.Stmt {
 						ast.NewIdent("ctx"),
 						&ast.BasicLit{
 							Kind:  token.STRING,
-							Value: strconv.Quote("auto generated span"),
+							Value: strconv.Quote(pkgName + "/" + funcName),
 						},
 					},
 				},
