@@ -14,12 +14,12 @@ func NewBar(orig *testdata.Bar) *Bar {
 	return &Bar{orig}
 }
 func (r *Bar) MustMethod(ctx context.Context) {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	ctx, span := trace.StartSpan(ctx, "testdata/MustMethod")
 	defer span.End()
 	r.Bar.MustMethod(ctx)
 }
 func (r *Bar) Method(ctx context.Context) error {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	ctx, span := trace.StartSpan(ctx, "testdata/Method")
 	defer span.End()
 	return r.Bar.Method(ctx)
 }

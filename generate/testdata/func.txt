@@ -9,17 +9,17 @@ import (
 )
 
 func MustFoo(ctx context.Context) { // noinspection GoUnusedExportedFunction
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	ctx, span := trace.StartSpan(ctx, "testdata/MustFoo")
 	defer span.End()
 	testdata.MustFoo(ctx)
 }
 func Foo(ctx context.Context, body aliasedIO.Reader) (err error) {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	ctx, span := trace.StartSpan(ctx, "testdata/Foo")
 	defer span.End()
 	return testdata.Foo(ctx, body)
 }
 func Send(ctx context.Context, request *http.Request) (err error) {
-	ctx, span := trace.StartSpan(ctx, "auto generated span")
+	ctx, span := trace.StartSpan(ctx, "testdata/Send")
 	defer span.End()
 	return testdata.Send(ctx, request)
 }
