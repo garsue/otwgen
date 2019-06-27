@@ -1,3 +1,6 @@
+[![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=for-the-badge)](/LICENSE)
+[![CircleCI](https://img.shields.io/circleci/build/gh/garsue/otwgen/master.svg?style=for-the-badge)](https://circleci.com/gh/garsue/otwgen)
+
 # otwgen
 
 OpenCensus embedded wrapper generator.
