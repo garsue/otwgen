@@ -15,7 +15,12 @@ type Service struct {
 }
 
 func (s *Service) GetContent(ctx context.Context) (header http.Header, err error) {
-	resp, err := s.client.Head("http://example.com")
+	req, err := http.NewRequest(http.MethodHead, "http://example.com", nil)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
