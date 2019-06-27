@@ -1,5 +1,6 @@
 [![Software License](https://img.shields.io/badge/license-MIT-brightgreen.svg?style=for-the-badge)](/LICENSE)
 [![CircleCI](https://img.shields.io/circleci/build/gh/garsue/otwgen/master.svg?style=for-the-badge)](https://circleci.com/gh/garsue/otwgen)
+[![Codecov](https://img.shields.io/codecov/c/gh/garsue/otwgen.svg?style=for-the-badge)](https://codecov.io/gh/garsue/otwgen)
 
 # otwgen
 
